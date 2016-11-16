@@ -1,3 +1,6 @@
+### Status
+[![Build Status](https://travis-ci.org/tony-johnson/PhosimIngest.png)](https://travis-ci.org/tony-johnson/PhosimIngest)
+
 A simple replacement for ingestSimImages which works way faster.
 
 To use: 
