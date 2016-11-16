@@ -69,8 +69,8 @@ class Visit {
         path = path.resolve(link);
         if (options.update && Files.exists(path)) return;
         if (options.clobber) Files.deleteIfExists(path);
-        Files.createSymbolicLink(path, file);
-        if (options.verbose) System.out.printf("%s -> %s\n", path, file);
+        Files.createSymbolicLink(path, file.toAbsolutePath().normalize());
+        if (options.verbose) System.out.printf("%s -> %s\n", path, file.toAbsolutePath().normalize());
     }
 
     public int getRaft() {
