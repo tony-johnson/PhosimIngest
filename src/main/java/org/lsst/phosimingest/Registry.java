@@ -21,7 +21,7 @@ public class Registry implements AutoCloseable {
 
     Registry(Path folder, PhosimIngest.Options options) throws IOException {
         createTable = "CREATE TABLE " + (options.update ? " IF NOT EXISTS " : "");
-        insertInto = "Insert " + (options.update ? " OR REPLACE " : "")+" INTO ";
+        insertInto = "Insert " + (options.update ? " OR REPLACE " : "OR IGNORE")+" INTO ";
         
         Path db = folder.resolve("registry.sqlite3");
         if (options.clobber) Files.deleteIfExists(db);
