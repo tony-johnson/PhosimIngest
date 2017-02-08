@@ -18,6 +18,7 @@ public class Registry implements AutoCloseable {
     private final Connection conn;
     private final String createTable;
     private final String insertInto;
+    private final boolean suppressCommit;
 
     Registry(Path folder, PhosimIngest.Options options) throws IOException {
         createTable = "CREATE TABLE " + (options.update ? " IF NOT EXISTS " : "");
@@ -29,6 +30,7 @@ public class Registry implements AutoCloseable {
             Class.forName("org.sqlite.JDBC");
             conn = DriverManager.getConnection("jdbc:sqlite:" + db.toString());
             conn.setAutoCommit(false);
+            suppressCommit = options.suppressCommit;
             doTransaction(() -> {
                 try (Statement stmt = conn.createStatement()) {
                     String sql = createTable + "raw (id integer primary key autoincrement, taiObs text,visit int,filter text,raft text,snap int,ccd text,sensor text,expTime double,channel text, unique(visit,sensor,raft,channel,snap))";
@@ -72,6 +74,7 @@ public class Registry implements AutoCloseable {
 
     @Override
     public void close() throws SQLException {
+        if (suppressCommit) conn.commit();
         conn.close();
     }
 
@@ -82,8 +85,7 @@ public class Registry implements AutoCloseable {
             conn.rollback();
             throw x;
         } finally {
-            conn.commit();
-
+            if (!suppressCommit) conn.commit();
         }
     }
 

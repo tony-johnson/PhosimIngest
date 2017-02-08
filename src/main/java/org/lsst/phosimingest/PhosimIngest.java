@@ -9,6 +9,14 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.SQLException;
 import java.util.Collections;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import nom.tam.fits.FitsFactory;
 import org.kohsuke.args4j.CmdLineException;
@@ -18,22 +26,26 @@ import org.kohsuke.args4j.OptionHandlerFilter;
 
 /**
  * Main routine of the PhosimIngest program.
+ *
  * @author tonyj
  */
 public class PhosimIngest {
 
     private static final Pattern fitsPattern = Pattern.compile(".*\\.fits(\\.gz)?");
     private final Options options = new Options();
+    ExecutorService executor;
+    CompletionService<Visit> ecs;
 
     static class Options {
+
         @Option(name = "-c", usage = "replace existing output files")
-         boolean clobber;
+        boolean clobber;
 
         @Option(name = "-u", usage = "only link new files, update existing database")
-         boolean update;
+        boolean update;
 
         @Option(name = "-v", usage = "verbose output")
-         boolean verbose;
+        boolean verbose;
 
         @Option(name = "-o", usage = "directory where output will be put")
         @SuppressWarnings("FieldMayBeFinal")
@@ -42,15 +54,22 @@ public class PhosimIngest {
         @Option(name = "-i", usage = "directory to search for fits files")
         @SuppressWarnings("FieldMayBeFinal")
         private File in = new File(".");
+
+        @Option(name = "-t", usage = "number of threads to use for fits file processing")
+        int nThreads = 32;
+
+        @Option(name = "-s", usage = "Suppress commit after each visit")
+        boolean suppressCommit = false;
     }
 
-    public static void main(String[] args) throws IOException, SQLException {
+    public static void main(String[] args) throws IOException, SQLException, InterruptedException, ExecutionException {
         new PhosimIngest().doMain(args);
     }
 
-    private void doMain(String[] args) throws IOException, SQLException {
+    private void doMain(String[] args) throws IOException, SQLException, InterruptedException, ExecutionException {
         CmdLineParser parser = new CmdLineParser(options);
-
+        executor = Executors.newFixedThreadPool(options.nThreads);
+        ecs = new ExecutorCompletionService<>(executor);
         try {
             parser.parseArgument(args);
             FitsFactory.setUseHierarch(true);
@@ -58,9 +77,15 @@ public class PhosimIngest {
             Path output = options.out.toPath();
             Files.createDirectories(output);
             createMapper(output);
+            int nFiles = scanForFitsFiles(input, (file) -> scheduleFitsFile(file, output));
             try (Registry registry = new Registry(output, options)) {
-                scanForFitsFiles(input, (file) -> handleFitsFile(file, output, registry));
+                for (int n=0;n<nFiles;n++) {
+                    Future<Visit> future = ecs.take();
+                    registry.addVisit(future.get());
+                }
             }
+            executor.shutdown();
+            executor.awaitTermination(1, TimeUnit.DAYS);
         } catch (CmdLineException e) {
             // if there's a problem in the command line,
             // you'll get this exception. this will report
@@ -77,28 +102,35 @@ public class PhosimIngest {
 
     }
 
-    private void handleFitsFile(Path file, Path output, Registry registry) throws IOException {
+    private void scheduleFitsFile(Path file, Path output) {
+        ecs.submit(() -> handleFitsFile(file, output));
+    }
+
+    private Visit handleFitsFile(Path file, Path output) throws IOException {
 
         Visit visit = new Visit(file);
         visit.createLink(output, options);
-        registry.addVisit(visit);
+        return visit;
     }
 
     private void createMapper(Path output) throws IOException {
         Files.write(output.resolve("_mapper"), Collections.singletonList("lsst.obs.lsstSim.LsstSimMapper"));
     }
 
-    void scanForFitsFiles(Path root, FitsFileVisitor visitor) throws IOException {
+    int scanForFitsFiles(Path root, FitsFileVisitor visitor) throws IOException {
+        AtomicInteger n = new AtomicInteger(0);
         Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 if (fitsPattern.matcher(file.toString()).matches()) {
                     visitor.visit(file);
+                    n.incrementAndGet();
                 }
                 return FileVisitResult.CONTINUE;
             }
         });
+        return n.get();
     }
 
     private interface FitsFileVisitor {
