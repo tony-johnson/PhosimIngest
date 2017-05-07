@@ -57,7 +57,7 @@ class Visit {
             mjd = header.getDoubleValue("MJD-OBS");
             pairid = header.getIntValue("PAIRID");
         } catch (FitsException ex) {
-            throw new IOException("Error reading fits file", ex);
+            throw new IOException("Error reading fits file: "+file, ex);
         }
     }
 

@@ -79,13 +79,11 @@ public class PhosimIngest {
             createMapper(output);
             int nFiles = scanForFitsFiles(input, (file) -> scheduleFitsFile(file, output));
             try (Registry registry = new Registry(output, options)) {
-                for (int n=0;n<nFiles;n++) {
+                for (int n = 0; n < nFiles; n++) {
                     Future<Visit> future = ecs.take();
                     registry.addVisit(future.get());
                 }
             }
-            executor.shutdown();
-            executor.awaitTermination(1, TimeUnit.DAYS);
         } catch (CmdLineException e) {
             // if there's a problem in the command line,
             // you'll get this exception. this will report
@@ -98,6 +96,9 @@ public class PhosimIngest {
 
             // print option sample. This is useful some time
             System.err.println("  Example: java PhosimIngest" + parser.printExample(OptionHandlerFilter.ALL));
+        } finally {
+            executor.shutdown();
+            executor.awaitTermination(30, TimeUnit.SECONDS);
         }
 
     }
