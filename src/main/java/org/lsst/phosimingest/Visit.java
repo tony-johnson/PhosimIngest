@@ -46,6 +46,9 @@ class Visit {
             visit = header.getIntValue("OBSID");
             filter = header.getStringValue("FILTER");
             chipid = header.getStringValue("CHIPID");
+            if (chipid == null) {
+                throw new IOException("Missing chipid");
+            }
             Matcher matcher = chipIdPattern.matcher(chipid);
             if (!matcher.matches()) {
                 throw new IOException("Invalid chipid: " + chipid);
@@ -56,7 +59,7 @@ class Visit {
             s2 = Integer.parseInt(matcher.group(4));
             mjd = header.getDoubleValue("MJD-OBS");
             pairid = header.getIntValue("PAIRID");
-        } catch (FitsException ex) {
+        } catch (Exception ex) {
             throw new IOException("Error reading fits file: "+file, ex);
         }
     }

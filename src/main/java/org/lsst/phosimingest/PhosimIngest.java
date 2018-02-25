@@ -2,11 +2,9 @@ package org.lsst.phosimingest;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.SQLException;
 import java.util.Collections;
 import java.util.concurrent.CompletionService;
@@ -17,7 +15,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Pattern;
 import nom.tam.fits.FitsFactory;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
@@ -31,7 +28,6 @@ import org.kohsuke.args4j.OptionHandlerFilter;
  */
 public class PhosimIngest {
 
-    private static final Pattern fitsPattern = Pattern.compile(".*\\.fits(\\.gz)?");
     private final Options options = new Options();
     ExecutorService executor;
     CompletionService<Visit> ecs;
@@ -60,6 +56,9 @@ public class PhosimIngest {
 
         @Option(name = "-s", usage = "Suppress commit after each visit")
         boolean suppressCommit = false;
+
+        @Option(name = "-p", usage = "Pattern to match to find input files")
+        String filePattern = "**/*.fits";
     }
 
     public static void main(String[] args) throws IOException, SQLException, InterruptedException, ExecutionException {
@@ -120,17 +119,12 @@ public class PhosimIngest {
 
     int scanForFitsFiles(Path root, FitsFileVisitor visitor) throws IOException {
         AtomicInteger n = new AtomicInteger(0);
-        Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                if (fitsPattern.matcher(file.toString()).matches()) {
-                    visitor.visit(file);
-                    n.incrementAndGet();
-                }
-                return FileVisitResult.CONTINUE;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(root, options.filePattern)) {
+            for (Path entry : stream) {
+                visitor.visit(entry);
+                n.incrementAndGet();
             }
-        });
+        }
         return n.get();
     }
 
